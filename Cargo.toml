@@ -1,0 +1,23 @@
+[package]
+name = "arcana-cli"
+version = "1.0.0"
+edition = "2021"
+description = "A rich, beautiful terminal tarot application"
+authors = ["Arcana Contributors"]
+license = "MIT"
+
+[[bin]]
+name = "arcana"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+rand = "0.8"
+crossterm = "0.28"
+chrono = "0.4"
+ratatui = "0.29"
+dirs = "6.0"
+
+[profile.release]
+opt-level = 3
+lto = true
