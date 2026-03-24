@@ -5,6 +5,10 @@ edition = "2021"
 description = "A rich, beautiful terminal tarot application"
 authors = ["Arcana Contributors"]
 license = "MIT"
+repository = "https://github.com/chloe-pomegranate/arcana-cli"
+homepage = "https://github.com/chloe-pomegranate/arcana-cli"
+keywords = ["tarot", "cli", "terminal", "tui", "divination"]
+categories = ["command-line-utilities"]
 
 [[bin]]
 name = "arcana"
