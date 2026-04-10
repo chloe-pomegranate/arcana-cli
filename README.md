@@ -77,11 +77,19 @@ cp target/release/arcana ~/.local/bin/
 - Rust 1.70+ (for building from source)
 - Terminal with Unicode and 256-color support
 
-## 🚀 Usage
+## 🚀 Quick Start
+
+```bash
+# Run in development mode
+cargo run -- tui        # Launch the TUI
+cargo run -- read       # Quick CLI reading
+```
+
+## 🎮 Usage
 
 ### Launch the TUI
 ```bash
-arcana              # Launch interactive TUI
+arcana tui          # Launch interactive TUI
 ```
 
 ### CLI Commands
@@ -155,8 +163,6 @@ arcana spreads
 arcana/
 ├── src/
 │   ├── main.rs              # CLI entry point
-│   ├── ascii/               # ASCII art for Major Arcana
-│   │   └── mod.rs           # 22 card illustrations
 │   ├── cards/               # Card definitions
 │   │   ├── mod.rs           # Core types and structures
 │   │   ├── major.rs         # 22 Major Arcana definitions
@@ -197,7 +203,7 @@ cargo test
 
 ### Running in development mode
 ```bash
-cargo run
+cargo run -- tui    # or: cargo run -- read, cargo run -- list, etc.
 ```
 
 ### Building release
@@ -223,7 +229,7 @@ cargo build --release
 ## 🔮 Example Session
 
 ```bash
-$ arcana
+$ arcana tui
 # [TUI launches - select "New Reading"]
 # [Choose "Three-Card Spread"]
 # [Watch shuffle animation]
