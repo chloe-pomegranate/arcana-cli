@@ -793,7 +793,7 @@ pub const MINOR_ARCANA: &[Card] = &[
 ];
 
 /// Get a Minor Arcana card by suit and number
-#[allow(dead_code)]
+#[cfg(test)]
 pub fn get_by_suit_and_number(suit: Suit, number: u8) -> Option<&'static Card> {
     MINOR_ARCANA
         .iter()
@@ -807,7 +807,7 @@ pub fn get_by_suit(suit: Suit) -> impl Iterator<Item = &'static Card> {
 }
 
 /// Get a Minor Arcana card by name
-#[allow(dead_code)]
+#[cfg(test)]
 pub fn get_by_name(name: &str) -> Option<&'static Card> {
     let name_lower = name.to_lowercase();
     MINOR_ARCANA

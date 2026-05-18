@@ -97,22 +97,40 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 
     f.render_stateful_widget(card_list, chunks[1], &mut app.card_list_state);
 
-    // Help
-    let help = Paragraph::new(
-        Text::from(vec![Line::from(vec![
-            Span::styled("↑/k", Style::default().fg(app.theme.yellow)),
-            Span::styled(" up  ", Style::default().fg(app.theme.subtext0)),
-            Span::styled("↓/j", Style::default().fg(app.theme.yellow)),
-            Span::styled(" down  ", Style::default().fg(app.theme.subtext0)),
-            Span::styled("Tab", Style::default().fg(app.theme.yellow)),
-            Span::styled(" filter  ", Style::default().fg(app.theme.subtext0)),
-            Span::styled("Enter", Style::default().fg(app.theme.yellow)),
-            Span::styled(" view  ", Style::default().fg(app.theme.subtext0)),
-            Span::styled("Esc/q", Style::default().fg(app.theme.yellow)),
-            Span::styled(" back", Style::default().fg(app.theme.subtext0)),
-        ])])
-    )
-    .alignment(Alignment::Center);
+    // Help or search box
+    if app.card_search_active {
+        let search_text = format!("{}{}", app.card_search_query, "▏");
+        let search_block = Block::default()
+            .title(" Search ")
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(app.theme.yellow))
+            .title_style(Style::default().fg(app.theme.yellow).add_modifier(Modifier::BOLD));
 
-    f.render_widget(help, chunks[2]);
+        let search_para = Paragraph::new(Text::from(vec![Line::from(
+            Span::styled(search_text, Style::default().fg(app.theme.text))
+        )]))
+        .block(search_block);
+
+        f.render_widget(search_para, chunks[2]);
+    } else {
+        let help = Paragraph::new(
+            Text::from(vec![Line::from(vec![
+                Span::styled("↑/k", Style::default().fg(app.theme.yellow)),
+                Span::styled(" up  ", Style::default().fg(app.theme.subtext0)),
+                Span::styled("↓/j", Style::default().fg(app.theme.yellow)),
+                Span::styled(" down  ", Style::default().fg(app.theme.subtext0)),
+                Span::styled("Tab", Style::default().fg(app.theme.yellow)),
+                Span::styled(" filter  ", Style::default().fg(app.theme.subtext0)),
+                Span::styled("/", Style::default().fg(app.theme.yellow)),
+                Span::styled(" search  ", Style::default().fg(app.theme.subtext0)),
+                Span::styled("Enter", Style::default().fg(app.theme.yellow)),
+                Span::styled(" view  ", Style::default().fg(app.theme.subtext0)),
+                Span::styled("Esc/q", Style::default().fg(app.theme.yellow)),
+                Span::styled(" back", Style::default().fg(app.theme.subtext0)),
+            ])])
+        )
+        .alignment(Alignment::Center);
+
+        f.render_widget(help, chunks[2]);
+    }
 }

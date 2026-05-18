@@ -1,5 +1,6 @@
 //! Journal system for saving and loading readings
 
+use chrono::TimeZone;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -9,30 +10,16 @@ use crate::spreads::Reading;
 /// Journal entry metadata
 #[derive(Debug, Clone)]
 pub struct JournalEntry {
-    #[allow(dead_code)]
     pub id: String,
     pub timestamp: chrono::DateTime<chrono::Local>,
     pub spread_name: String,
     pub card_count: usize,
-    #[allow(dead_code)]
-    pub file_path: PathBuf,
 }
 
 impl JournalEntry {
     /// Format the timestamp for display
     pub fn formatted_date(&self) -> String {
         self.timestamp.format("%Y-%m-%d %H:%M").to_string()
-    }
-
-    /// Format for listing
-    #[allow(dead_code)]
-    pub fn list_display(&self) -> String {
-        format!(
-            "{} - {} ({} cards)",
-            self.formatted_date(),
-            self.spread_name,
-            self.card_count
-        )
     }
 }
 
@@ -57,10 +44,20 @@ impl Journal {
         Ok(home.join(".arcana").join("journal"))
     }
 
+    /// Returns true if the journal is in a disabled state (could not be initialized)
+    pub fn is_disabled(&self) -> bool {
+        self.base_path.as_os_str().is_empty()
+    }
+
     /// Save a reading to the journal
     pub fn save_reading(&self, reading: &Reading) -> io::Result<PathBuf> {
+        if self.is_disabled() {
+            return Err(io::Error::other(
+                "Journal is disabled (could not create journal directory)"
+            ));
+        }
         let timestamp = reading.timestamp.format("%Y-%m-%d-%H-%M-%S");
-        let filename = format!("{}-{}.md", timestamp, sanitize_filename(&reading.spread.name));
+        let filename = format!("{}-{}.md", timestamp, sanitize_filename(reading.spread.name));
         let file_path = self.base_path.join(&filename);
 
         let content = reading.to_markdown();
@@ -89,7 +86,7 @@ impl Journal {
         }
 
         // Sort by timestamp (newest first)
-        entries.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        entries.sort_by_key(|b| std::cmp::Reverse(b.timestamp));
 
         Ok(entries)
     }
@@ -99,10 +96,16 @@ impl Journal {
         let filename = path.file_stem()?.to_str()?;
         let content = fs::read_to_string(path).ok()?;
         
-        // Get file modification time as timestamp
-        let metadata = fs::metadata(path).ok()?;
-        let modified = metadata.modified().ok()?;
-        let timestamp = chrono::DateTime::from(modified);
+        // Parse timestamp from filename: YYYY-MM-DD-HH-MM-SS-...
+        let timestamp = if filename.len() >= 19 {
+            let date_str = &filename[..19];
+            chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%d-%H-%M-%S")
+                .ok()
+                .and_then(|naive| chrono::Local.from_local_datetime(&naive).single())
+        } else {
+            None
+        };
+        let timestamp = timestamp.unwrap_or_else(chrono::Local::now);
 
         // Parse spread name from content
         let spread_name = content
@@ -119,121 +122,33 @@ impl Journal {
             timestamp,
             spread_name,
             card_count,
-            file_path: path.to_path_buf(),
         })
     }
 
     /// Load the content of a specific entry
-    #[allow(dead_code)]
     pub fn load_entry_content(&self, id: &str) -> io::Result<String> {
+        if self.is_disabled() {
+            return Err(io::Error::other(
+                "Journal is disabled"
+            ));
+        }
         let path = self.base_path.join(format!("{}.md", id));
         fs::read_to_string(path)
-    }
-
-    /// Delete an entry
-    #[allow(dead_code)]
-    pub fn delete_entry(&self, id: &str) -> io::Result<()> {
-        let path = self.base_path.join(format!("{}.md", id));
-        fs::remove_file(path)
-    }
-
-    /// Get the base path
-    #[allow(dead_code)]
-    pub fn path(&self) -> &Path {
-        &self.base_path
     }
 }
 
 impl Default for Journal {
     fn default() -> Self {
-        Self::new().expect("Failed to create journal")
+        Self::new().unwrap_or_else(|_| Self {
+            base_path: PathBuf::new(),
+        })
     }
 }
 
 /// Sanitize a string for use in a filename
 fn sanitize_filename(name: &str) -> String {
     name.to_lowercase()
-        .replace(' ', "-")
-        .replace('/', "-")
-        .replace('\\', "-")
-        .replace(':', "-")
-        .replace('*', "-")
-        .replace('?', "-")
-        .replace('"', "-")
-        .replace('<', "-")
-        .replace('>', "-")
-        .replace('|', "-")
-}
-
-/// Extension trait for Reading to add markdown export
-#[allow(dead_code)]
-pub trait ReadingExt {
-    fn to_markdown(&self) -> String;
-}
-
-#[allow(dead_code)]
-impl ReadingExt for Reading {
-    fn to_markdown(&self) -> String {
-        use std::fmt::Write;
-        
-        let mut output = String::new();
-        
-        writeln!(
-            &mut output,
-            "# Tarot Reading — {}",
-            self.timestamp.format("%Y-%m-%d %H:%M")
-        )
-        .unwrap();
-        writeln!(&mut output).unwrap();
-        writeln!(&mut output, "## Spread: {}", self.spread.name).unwrap();
-        writeln!(&mut output).unwrap();
-        
-        if let Some(notes) = &self.notes {
-            writeln!(&mut output, "### Notes").unwrap();
-            writeln!(&mut output, "{}", notes).unwrap();
-            writeln!(&mut output).unwrap();
-        }
-        
-        for (i, (card, position)) in self
-            .drawn
-            .iter()
-            .zip(self.spread.positions.iter())
-            .enumerate()
-        {
-            writeln!(
-                &mut output,
-                "### {}. {} — {}",
-                i + 1,
-                position.name,
-                card.card.name
-            )
-            .unwrap();
-            
-            if card.reversed {
-                writeln!(&mut output, "**Reversed**").unwrap();
-            } else {
-                writeln!(&mut output, "**Upright**").unwrap();
-            }
-            writeln!(&mut output).unwrap();
-            
-            writeln!(&mut output, "**Keywords:** {}", card.keywords()).unwrap();
-            writeln!(&mut output).unwrap();
-            
-            writeln!(&mut output, "**Meaning:**").unwrap();
-            writeln!(&mut output, "{}", card.meaning()).unwrap();
-            writeln!(&mut output).unwrap();
-            
-            if let Some(element) = card.card.element {
-                writeln!(&mut output, "- **Element:** {:?}", element).unwrap();
-            }
-            if let Some(astrology) = card.card.astrology {
-                writeln!(&mut output, "- **Astrology:** {}", astrology).unwrap();
-            }
-            writeln!(&mut output).unwrap();
-        }
-        
-        output
-    }
+        .replace([' ', '/', '\\', ':', '*', '?', '"', '<', '>', '|'], "-")
 }
 
 #[cfg(test)]

@@ -14,7 +14,7 @@ use ratatui::{
 use std::io;
 use std::time::{Duration, Instant};
 
-use crate::cards::{ArcanaType, Card, Suit};
+use crate::cards::{Card, Suit};
 use crate::deck::Deck;
 use crate::journal::{Journal, JournalEntry};
 use crate::spreads::{self, Reading, Spread};
@@ -30,8 +30,10 @@ pub enum Screen {
     ShuffleAnimation,
     CardReveal,
     ReadingComplete,
+    ReadingNotes,
     CardBrowser,
     CardDetail,
+    DailyCard,
     Journal,
     JournalDetail,
     Help,
@@ -43,6 +45,7 @@ pub enum Screen {
 #[derive(Debug, Clone, Copy)]
 pub enum MenuItem {
     NewReading,
+    DailyCard,
     BrowseCards,
     Journal,
     Help,
@@ -53,6 +56,7 @@ impl MenuItem {
     pub fn as_str(&self) -> &'static str {
         match self {
             MenuItem::NewReading => "🔮  New Reading",
+            MenuItem::DailyCard => "🌅  Daily Card",
             MenuItem::BrowseCards => "📖  Browse Cards",
             MenuItem::Journal => "📓  Journal",
             MenuItem::Help => "❓  Help",
@@ -83,6 +87,8 @@ pub struct App {
     pub card_list_state: ListState,
     pub card_filter: CardFilter,
     pub selected_card: Option<&'static Card>,
+    pub card_search_active: bool,
+    pub card_search_query: String,
     
     // Reading
     pub deck: Deck,
@@ -103,14 +109,16 @@ pub struct App {
     pub journal_entries: Vec<JournalEntry>,
     pub journal_list_state: ListState,
     pub selected_journal_entry: Option<(JournalEntry, String)>,
+
+    // Daily card
+    pub daily_card: Option<&'static crate::cards::Card>,
+
+    // Reading notes
+    pub reading_notes: String,
 }
 
 /// Catppuccin Mocha theme for TUI
 pub struct AppTheme {
-    #[allow(dead_code)]
-    pub base: Color,
-    #[allow(dead_code)]
-    pub mantle: Color,
     pub surface0: Color,
     pub surface1: Color,
     pub text: Color,
@@ -123,15 +131,11 @@ pub struct AppTheme {
     pub green: Color,
     pub yellow: Color,
     pub sky: Color,
-    #[allow(dead_code)]
-    pub teal: Color,
 }
 
 impl Default for AppTheme {
     fn default() -> Self {
         Self {
-            base: Color::Rgb(30, 30, 46),
-            mantle: Color::Rgb(24, 24, 37),
             surface0: Color::Rgb(49, 50, 68),
             surface1: Color::Rgb(69, 71, 90),
             text: Color::Rgb(205, 214, 244),
@@ -144,7 +148,6 @@ impl Default for AppTheme {
             green: Color::Rgb(166, 227, 161),
             yellow: Color::Rgb(249, 226, 175),
             sky: Color::Rgb(137, 220, 235),
-            teal: Color::Rgb(148, 226, 213),
         }
     }
 }
@@ -159,13 +162,6 @@ impl AppTheme {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn arcana_color(&self, arcana: ArcanaType) -> Color {
-        match arcana {
-            ArcanaType::Major => self.mauve,
-            ArcanaType::Minor => self.lavender,
-        }
-    }
 }
 
 impl Default for App {
@@ -195,6 +191,7 @@ impl Default for App {
             should_quit: false,
             menu_items: vec![
                 MenuItem::NewReading,
+                MenuItem::DailyCard,
                 MenuItem::BrowseCards,
                 MenuItem::Journal,
                 MenuItem::Help,
@@ -205,6 +202,8 @@ impl Default for App {
             card_list_state,
             card_filter: CardFilter::All,
             selected_card: None,
+            card_search_active: false,
+            card_search_query: String::new(),
             deck: Deck::new(),
             selected_spread: None,
             reading: None,
@@ -217,6 +216,8 @@ impl Default for App {
             journal_entries: Vec::new(),
             journal_list_state: ListState::default(),
             selected_journal_entry: None,
+            daily_card: None,
+            reading_notes: String::new(),
         }
     }
 }
@@ -301,6 +302,12 @@ impl App {
                     self.screen = Screen::SpreadSelection;
                     self.deck.reset_and_shuffle();
                 }
+                MenuItem::DailyCard => {
+                    let today = chrono::Local::now().date_naive();
+                    let drawn = Deck::daily_card(today);
+                    self.daily_card = Some(drawn.card);
+                    self.screen = Screen::DailyCard;
+                }
                 MenuItem::BrowseCards => {
                     self.screen = Screen::CardBrowser;
                     self.refresh_card_list();
@@ -319,12 +326,23 @@ impl App {
     }
 
     fn refresh_card_list(&mut self) {
-        self.cards = match self.card_filter {
+        let mut cards: Vec<&'static Card> = match self.card_filter {
             CardFilter::All => Deck::iter_all_cards().collect(),
             CardFilter::Major => crate::deck::utils::major_arcana().iter().collect(),
             CardFilter::Suit(suit) => crate::deck::utils::by_suit(suit).collect(),
         };
-        
+
+        // Apply search filter if active
+        if self.card_search_active && !self.card_search_query.is_empty() {
+            let query = self.card_search_query.to_lowercase();
+            cards.retain(|card| {
+                card.name.to_lowercase().contains(&query)
+                    || card.keywords.iter().any(|kw| kw.to_lowercase().contains(&query))
+            });
+        }
+
+        self.cards = cards;
+
         // Ensure selection is valid
         if self.cards.is_empty() {
             self.card_list_state.select(None);
@@ -375,11 +393,25 @@ impl App {
         }
     }
 
+    fn reveal_previous_card(&mut self) {
+        if self.reveal_index > 0 {
+            self.reveal_index -= 1;
+        }
+    }
+
     fn go_back(&mut self) {
         match self.screen {
             Screen::Home => {}
             Screen::SpreadSelection | Screen::CardBrowser | Screen::Journal | Screen::Help => {
                 self.screen = Screen::Home;
+            }
+            Screen::DailyCard => {
+                self.screen = Screen::Home;
+                self.daily_card = None;
+            }
+            Screen::ReadingNotes => {
+                self.screen = Screen::ReadingComplete;
+                self.reading_notes.clear();
             }
             Screen::JournalDetail => {
                 self.screen = Screen::Journal;
@@ -401,14 +433,21 @@ impl App {
         }
     }
 
-    pub fn save_current_reading(&mut self) -> Result<String, String> {
-        if let Some(ref reading) = self.reading {
+    pub fn save_current_reading(&mut self) -> Result<String, crate::error::ArcanaError> {
+        if let Some(ref mut reading) = self.reading {
+            // Embed notes if present
+            if !self.reading_notes.is_empty() {
+                reading.notes = Some(self.reading_notes.clone());
+            }
             match self.journal.save_reading(reading) {
-                Ok(path) => Ok(format!("Saved to {}", path.display())),
-                Err(e) => Err(format!("Failed to save: {}", e)),
+                Ok(path) => {
+                    self.reading_notes.clear();
+                    Ok(format!("Saved to {}", path.display()))
+                }
+                Err(e) => Err(crate::error::ArcanaError::Io(e)),
             }
         } else {
-            Err("No reading to save".to_string())
+            Err(crate::error::ArcanaError::NoReadingToSave)
         }
     }
 
@@ -472,7 +511,7 @@ impl App {
 }
 
 /// Run the TUI application
-pub fn run_tui() -> io::Result<()> {
+pub fn run_tui() -> Result<(), crate::error::ArcanaError> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
@@ -490,7 +529,7 @@ pub fn run_tui() -> io::Result<()> {
     )?;
     terminal.show_cursor()?;
 
-    res
+    res.map_err(crate::error::ArcanaError::Io)
 }
 
 fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<()> {
@@ -516,6 +555,8 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                         Screen::Help => handle_help_keys(&mut app, key.code),
                         Screen::Journal => handle_journal_keys(&mut app, key.code),
                         Screen::JournalDetail => handle_journal_detail_keys(&mut app, key.code),
+                        Screen::DailyCard => handle_daily_card_keys(&mut app, key.code),
+                        Screen::ReadingNotes => handle_reading_notes_keys(&mut app, key.code),
                         Screen::Quit => {}
                         Screen::NewReading => {}
                     }
@@ -567,6 +608,9 @@ fn handle_card_reveal_keys(app: &mut App, key: KeyCode) {
         KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Right | KeyCode::Char('j') => {
             app.reveal_next_card();
         }
+        KeyCode::Left | KeyCode::Char('h') => {
+            app.reveal_previous_card();
+        }
         _ => {}
     }
 }
@@ -575,36 +619,87 @@ fn handle_reading_complete_keys(app: &mut App, key: KeyCode) {
     match key {
         KeyCode::Char('q') | KeyCode::Esc | KeyCode::Enter => app.go_back(),
         KeyCode::Char('s') => {
+            app.reading_notes.clear();
+            app.screen = Screen::ReadingNotes;
+        }
+        _ => {}
+    }
+}
+
+fn handle_reading_notes_keys(app: &mut App, key: KeyCode) {
+    match key {
+        KeyCode::Esc => app.go_back(),
+        KeyCode::Enter => {
             match app.save_current_reading() {
                 Ok(msg) => {
-                    // Could show a toast notification here
                     eprintln!("\n{}\n", msg);
+                    app.screen = Screen::ReadingComplete;
                 }
                 Err(e) => {
                     eprintln!("\n{}\n", e);
                 }
             }
         }
-        _ => {}
-    }
-}
-
-fn handle_card_browser_keys(app: &mut App, key: KeyCode) {
-    match key {
-        KeyCode::Char('q') | KeyCode::Esc => app.go_back(),
-        KeyCode::Down | KeyCode::Char('j') => app.next_card(),
-        KeyCode::Up | KeyCode::Char('k') => app.previous_card(),
-        KeyCode::Tab => app.cycle_card_filter(),
-        KeyCode::Enter => {
-            if app.selected_card.is_some() {
-                app.screen = Screen::CardDetail;
-            }
+        KeyCode::Backspace => {
+            app.reading_notes.pop();
+        }
+        KeyCode::Char(c) => {
+            app.reading_notes.push(c);
         }
         _ => {}
     }
 }
 
+fn handle_card_browser_keys(app: &mut App, key: KeyCode) {
+    if app.card_search_active {
+        match key {
+            KeyCode::Esc => {
+                app.card_search_active = false;
+                app.card_search_query.clear();
+                app.refresh_card_list();
+            }
+            KeyCode::Enter => {
+                app.card_search_active = false;
+            }
+            KeyCode::Backspace => {
+                app.card_search_query.pop();
+                app.refresh_card_list();
+            }
+            KeyCode::Char(c) => {
+                app.card_search_query.push(c);
+                app.refresh_card_list();
+            }
+            _ => {}
+        }
+        return;
+    }
+
+    match key {
+        KeyCode::Char('q') | KeyCode::Esc => app.go_back(),
+        KeyCode::Down | KeyCode::Char('j') => app.next_card(),
+        KeyCode::Up | KeyCode::Char('k') => app.previous_card(),
+        KeyCode::Tab => app.cycle_card_filter(),
+        KeyCode::Char('/') => {
+            app.card_search_active = true;
+            app.card_search_query.clear();
+            app.refresh_card_list();
+        }
+        KeyCode::Enter
+            if app.selected_card.is_some() => {
+                app.screen = Screen::CardDetail;
+            }
+        _ => {}
+    }
+}
+
 fn handle_card_detail_keys(app: &mut App, key: KeyCode) {
+    match key {
+        KeyCode::Char('q') | KeyCode::Esc | KeyCode::Enter => app.go_back(),
+        _ => {}
+    }
+}
+
+fn handle_daily_card_keys(app: &mut App, key: KeyCode) {
     match key {
         KeyCode::Char('q') | KeyCode::Esc | KeyCode::Enter => app.go_back(),
         _ => {}

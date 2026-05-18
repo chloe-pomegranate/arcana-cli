@@ -58,7 +58,7 @@ fn render_linear(
     buf: &mut Buffer,
     colors: &LayoutColors,
 ) {
-    let positions = vec!["Past", "Present", "Future"];
+    let positions = ["Past", "Present", "Future"];
     let num_cards = cards.len().min(positions.len());
 
     let constraints: Vec<Constraint> = (0..num_cards)
@@ -83,7 +83,7 @@ fn render_cross(
     buf: &mut Buffer,
     colors: &LayoutColors,
 ) {
-    let _positions = vec!["Present", "Challenge", "Past", "Future", "Potential"];
+    let _positions = ["Present", "Challenge", "Past", "Future", "Potential"];
     
     // Center: Present (1) with Challenge (2) crossing it
     // Left: Past (3)
@@ -125,7 +125,7 @@ fn render_cross(
     if let Some(card) = cards.get(2) {
         render_mini_card(card, 3, "Past", middle_chunks[0], buf, colors);
     }
-    if let Some(card) = cards.get(0) {
+    if let Some(card) = cards.first() {
         render_mini_card(card, 1, "Present", middle_chunks[1], buf, colors);
     }
     if let Some(card) = cards.get(3) {
@@ -219,7 +219,7 @@ fn render_celtic_cross(
     if let Some(card) = cards.get(3) {
         render_tiny_card(card, 4, "Recent", cross_row2[0], buf, colors);
     }
-    if let Some(card) = cards.get(0) {
+    if let Some(card) = cards.first() {
         render_tiny_card(card, 1, "Present", cross_row2[1], buf, colors);
     }
     if let Some(card) = cards.get(1) {

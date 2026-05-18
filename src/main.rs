@@ -1,13 +1,17 @@
 use clap::{Parser, Subcommand, ValueEnum};
 use crossterm::style::Stylize;
 use ui::theme::ColorStyle;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 mod cards;
 mod deck;
+mod error;
 mod journal;
 mod spreads;
 mod tui;
 mod ui;
+
+use error::ArcanaError;
 
 use cards::{ArcanaType, Card, DrawnCard, Suit};
 use deck::{utils, Deck};
@@ -18,7 +22,7 @@ use ui::theme::style;
 #[derive(Parser)]
 #[command(name = "arcana")]
 #[command(about = "🔮 A rich, beautiful terminal tarot application")]
-#[command(version = "0.1.0")]
+#[command(version = env!("CARGO_PKG_VERSION"))]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -83,6 +87,9 @@ enum Commands {
 
     /// Show available tarot spreads
     Spreads,
+
+    /// Draw the card of the day
+    Daily,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -128,29 +135,36 @@ impl SpreadType {
 }
 
 fn main() {
+    if let Err(e) = run() {
+        eprintln!("{} {}", "Error:".red().bold(), e);
+        std::process::exit(1);
+    }
+}
+
+fn run() -> Result<(), ArcanaError> {
     let cli = Cli::parse();
 
     match cli.command {
         Commands::Tui => {
-            if let Err(e) = tui::run_tui() {
-                eprintln!("TUI error: {}", e);
-                std::process::exit(1);
-            }
+            tui::run_tui().map_err(|e| ArcanaError::Tui(e.to_string()))?;
         }
-        Commands::Card { name, major, suit } => cmd_card(name, major, suit),
-        Commands::List { major, suit, long } => cmd_list(major, suit, long),
+        Commands::Card { name, major, suit } => cmd_card(name, major, suit)?,
+        Commands::List { major, suit, long } => cmd_list(major, suit, long)?,
         Commands::Read {
             spread,
             journal,
             no_reversals,
             spread_name,
-        } => cmd_read(spread, journal, no_reversals, spread_name),
-        Commands::Spreads => cmd_spreads(),
+        } => cmd_read(spread, journal, no_reversals, spread_name)?,
+        Commands::Spreads => cmd_spreads()?,
+        Commands::Daily => cmd_daily()?,
     }
+
+    Ok(())
 }
 
 /// Handle the `card` subcommand
-fn cmd_card(name: Option<String>, major: bool, suit: Option<SuitArg>) {
+fn cmd_card(name: Option<String>, major: bool, suit: Option<SuitArg>) -> Result<(), ArcanaError> {
     if major {
         print_header("MAJOR ARCANA CARDS");
         println!();
@@ -158,7 +172,7 @@ fn cmd_card(name: Option<String>, major: bool, suit: Option<SuitArg>) {
         for card in utils::major_arcana() {
             print_card_line(card);
         }
-        return;
+        return Ok(());
     }
 
     if let Some(suit_arg) = suit {
@@ -169,7 +183,7 @@ fn cmd_card(name: Option<String>, major: bool, suit: Option<SuitArg>) {
         for card in utils::by_suit(suit) {
             print_card_line(card);
         }
-        return;
+        return Ok(());
     }
 
     // Show specific card
@@ -180,10 +194,7 @@ fn cmd_card(name: Option<String>, major: bool, suit: Option<SuitArg>) {
             // Try searching
             let results = Deck::search_by_name(&name);
             if results.is_empty() {
-                eprintln!("{}", format!("❌ Card not found: '{}'", name).red());
-                eprintln!();
-                eprintln!("Tip: Use 'arcana list' to see all available cards.");
-                std::process::exit(1);
+                return Err(ArcanaError::CardNotFound(name));
             } else if results.len() == 1 {
                 print_card_detail(results[0]);
             } else {
@@ -208,10 +219,11 @@ fn cmd_card(name: Option<String>, major: bool, suit: Option<SuitArg>) {
         println!("  arcana card --major");
         println!("  arcana card --suit cups");
     }
+    Ok(())
 }
 
 /// Handle the `list` subcommand
-fn cmd_list(major: bool, suit: Option<SuitArg>, long: bool) {
+fn cmd_list(major: bool, suit: Option<SuitArg>, long: bool) -> Result<(), ArcanaError> {
     let cards: Vec<&Card> = if major {
         utils::major_arcana().iter().collect()
     } else if let Some(suit_arg) = suit {
@@ -279,26 +291,19 @@ fn cmd_list(major: bool, suit: Option<SuitArg>, long: bool) {
 
     println!();
     println!("{}", "💡 Tip: Use 'arcana card <name>' for detailed information.".subtext());
+    Ok(())
 }
 
 /// Handle the `read` subcommand
 fn cmd_read(
     spread_type: SpreadType,
-    _journal: bool,
+    journal: bool,
     no_reversals: bool,
     spread_name: Option<String>,
-) {
+) -> Result<(), ArcanaError> {
     // Get the spread
     let spread: &'static Spread = if let Some(name) = spread_name {
-        match get_by_name(&name) {
-            Some(s) => s,
-            None => {
-                eprintln!("{}", format!("❌ Unknown spread: '{}'", name).red());
-                eprintln!();
-                eprintln!("Use 'arcana spreads' to see available spreads.");
-                std::process::exit(1);
-            }
-        }
+        get_by_name(&name).ok_or(ArcanaError::UnknownSpread(name))?
     } else {
         spread_type.as_spread()
     };
@@ -332,12 +337,25 @@ fn cmd_read(
     println!();
     println!("{}", "✨ Reading complete. May these cards guide your path.".mauve().bold());
 
-    // Save to journal if requested
-    if _journal {
-        // TODO: Implement journal saving in Phase 5
-        println!();
-        println!("{}", "💾 Journal saving will be available in Phase 5.".yellow());
+    // Save to journal if requested (non-fatal)
+    if journal {
+        if let Ok(j) = journal::Journal::new() {
+            match j.save_reading(&reading) {
+                Ok(path) => {
+                    println!();
+                    println!("{}", format!("💾 Reading saved to journal: {}", path.display()).green());
+                }
+                Err(e) => {
+                    eprintln!();
+                    eprintln!("{}", format!("❌ Failed to save reading: {}", e).red());
+                }
+            }
+        } else {
+            eprintln!();
+            eprintln!("{}", "❌ Could not initialize journal".red());
+        }
     }
+    Ok(())
 }
 
 /// Display a single card reading
@@ -415,7 +433,7 @@ fn display_celtic_cross_reading(reading: &Reading) {
 
         let card_name = |idx: usize| -> String {
             if let Some(card) = reading.drawn.get(idx) {
-                truncate(&card.card.name, 13)
+                truncate(card.card.name, 13)
             } else {
                 "???".to_string()
             }
@@ -457,7 +475,20 @@ fn display_celtic_cross_reading(reading: &Reading) {
 }
 
 /// Handle the `spreads` subcommand
-fn cmd_spreads() {
+/// Handle the `daily` subcommand
+fn cmd_daily() -> Result<(), ArcanaError> {
+    let today = chrono::Local::now().date_naive();
+    let drawn = Deck::daily_card(today);
+
+    print_header("CARD OF THE DAY");
+    println!();
+    println!("{}", format!("🌅 {}", today.format("%A, %B %d, %Y")).sky().bold());
+    println!();
+    print_drawn_card("The Card", &drawn);
+    Ok(())
+}
+
+fn cmd_spreads() -> Result<(), ArcanaError> {
     print_header("AVAILABLE SPREADS");
     println!();
 
@@ -482,6 +513,7 @@ fn cmd_spreads() {
 
     println!();
     println!("{}", "💡 Tip: Use --no-reversals to draw all cards upright.".subtext());
+    Ok(())
 }
 
 // ============================================================================
@@ -576,9 +608,9 @@ fn print_card_line(card: &Card) {
     );
 }
 
-/// Calculate visible length of a string (excluding ANSI escape codes)
+/// Calculate visible width of a string (excluding ANSI escape codes)
 fn visible_len(s: &str) -> usize {
-    let mut len = 0;
+    let mut stripped = String::new();
     let mut in_escape = false;
     for c in s.chars() {
         if c == '\x1b' {
@@ -588,10 +620,10 @@ fn visible_len(s: &str) -> usize {
                 in_escape = false;
             }
         } else {
-            len += 1;
+            stripped.push(c);
         }
     }
-    len
+    stripped.width()
 }
 
 /// Print a line with content that has a left border and right border at exact width
@@ -687,6 +719,24 @@ fn print_card_detail(card: &Card) {
     // Yes/No always shows
     let yes_no_line = format!(" {:<12} {}", "Yes/No:", card.yes_or_no.to_string().sky());
     print_content_line(&vbar, &yes_no_line, &vbar, width);
+
+    // Separator
+    println!("├{}┤", hbar);
+
+    // Description
+    if !card.description.is_empty() {
+        let desc_wrapped = textwrap::fill(card.description, width - 4);
+        let mut desc_lines = desc_wrapped.lines();
+        if let Some(first_line) = desc_lines.next() {
+            let label = "Description".mauve().bold();
+            let line_content = format!(" {}: {}", label, first_line);
+            print_content_line(&vbar, &line_content, &vbar, width);
+        }
+        for line in desc_lines {
+            let line_content = format!("   {}", line);
+            print_content_line(&vbar, &line_content, &vbar, width);
+        }
+    }
 
     // Bottom border
     println!("╰{}╯", hbar);
@@ -807,46 +857,29 @@ fn print_shuffle_animation() {
 
 /// Helper to repeat a character
 fn repeat_char(ch: char, count: usize) -> String {
-    std::iter::repeat(ch).take(count).collect()
+    std::iter::repeat_n(ch, count).collect()
 }
 
-/// Truncate a string to max_len with ellipsis
-fn truncate(s: &str, max_len: usize) -> String {
-    if s.len() <= max_len {
-        format!("{:width$}", s, width = max_len)
+/// Truncate a string to max_width display width with ellipsis
+fn truncate(s: &str, max_width: usize) -> String {
+    let width = s.width();
+    if width <= max_width {
+        format!("{:width$}", s, width = max_width)
     } else {
-        format!("{}...", &s[..max_len - 3])
+        let target = max_width.saturating_sub(3);
+        let mut current_width = 0;
+        let mut end_idx = 0;
+        for (idx, c) in s.char_indices() {
+            let w = c.width().unwrap_or(0);
+            if current_width + w > target {
+                end_idx = idx;
+                break;
+            }
+            current_width += w;
+            end_idx = idx + c.len_utf8();
+        }
+        format!("{}...", &s[..end_idx])
     }
 }
 
-/// Simple text wrapping for descriptions
-mod textwrap {
-    pub fn fill(text: &str, width: usize) -> String {
-        let mut result = String::new();
-        let mut current_line = String::new();
 
-        for word in text.split_whitespace() {
-            if current_line.is_empty() {
-                current_line.push_str(word);
-            } else if current_line.len() + 1 + word.len() <= width {
-                current_line.push(' ');
-                current_line.push_str(word);
-            } else {
-                if !result.is_empty() {
-                    result.push('\n');
-                }
-                result.push_str(&current_line);
-                current_line = word.to_string();
-            }
-        }
-
-        if !current_line.is_empty() {
-            if !result.is_empty() {
-                result.push('\n');
-            }
-            result.push_str(&current_line);
-        }
-
-        result
-    }
-}

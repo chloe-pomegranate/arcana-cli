@@ -43,7 +43,6 @@ pub const SINGLE: Spread = Spread {
     positions: &[SpreadPosition {
         name: "The Card",
         description: "The energy, message, or answer you need right now",
-        index: 0,
     }],
     layout: SpreadLayout::Single,
 };
@@ -56,17 +55,14 @@ pub const THREE_CARD: Spread = Spread {
         SpreadPosition {
             name: "Past",
             description: "What has led to this moment. The foundation and influences that shaped your current situation.",
-            index: 0,
         },
         SpreadPosition {
             name: "Present",
             description: "The current situation. Where you stand right now and the energy surrounding you.",
-            index: 1,
         },
         SpreadPosition {
             name: "Future",
             description: "Where things are heading. The likely outcome if current energies continue.",
-            index: 2,
         },
     ],
     layout: SpreadLayout::Linear,
@@ -80,17 +76,14 @@ pub const SITUATION_ACTION_OUTCOME: Spread = Spread {
         SpreadPosition {
             name: "Situation",
             description: "The current circumstances and context of your question.",
-            index: 0,
         },
         SpreadPosition {
             name: "Action",
             description: "The recommended approach or action to take.",
-            index: 1,
         },
         SpreadPosition {
             name: "Outcome",
             description: "The likely result if you take the suggested action.",
-            index: 2,
         },
     ],
     layout: SpreadLayout::Linear,
@@ -104,17 +97,14 @@ pub const MIND_BODY_SPIRIT: Spread = Spread {
         SpreadPosition {
             name: "Mind",
             description: "Your mental state, thoughts, and intellectual perspective.",
-            index: 0,
         },
         SpreadPosition {
             name: "Body",
             description: "Your physical state, health, and material circumstances.",
-            index: 1,
         },
         SpreadPosition {
             name: "Spirit",
             description: "Your spiritual state, intuition, and higher guidance.",
-            index: 2,
         },
     ],
     layout: SpreadLayout::Linear,
@@ -128,27 +118,22 @@ pub const FIVE_CARD_CROSS: Spread = Spread {
         SpreadPosition {
             name: "Present",
             description: "The heart of the matter. Your current situation and central energy.",
-            index: 0,
         },
         SpreadPosition {
             name: "Challenge",
             description: "What's working against you. Obstacles, difficulties, or opposition.",
-            index: 1,
         },
         SpreadPosition {
             name: "Past",
             description: "Foundation of the situation. What has led to where you are now.",
-            index: 2,
         },
         SpreadPosition {
             name: "Future",
             description: "What's coming next. Near-term developments and energies approaching.",
-            index: 3,
         },
         SpreadPosition {
             name: "Potential",
             description: "The best possible outcome. What can be achieved with awareness and effort.",
-            index: 4,
         },
     ],
     layout: SpreadLayout::Cross,
@@ -162,52 +147,42 @@ pub const CELTIC_CROSS: Spread = Spread {
         SpreadPosition {
             name: "Present",
             description: "The current situation. The heart of the matter and your central energy right now.",
-            index: 0,
         },
         SpreadPosition {
             name: "Challenge",
             description: "The immediate obstacle or challenge. What crosses you, creates difficulty, or needs attention.",
-            index: 1,
         },
         SpreadPosition {
             name: "Foundation",
             description: "The root cause. What underlies the situation, often unconscious or from the distant past.",
-            index: 2,
         },
         SpreadPosition {
             name: "Recent Past",
             description: "What's just happened. Recent events that are still influencing the present.",
-            index: 3,
         },
         SpreadPosition {
             name: "Crown",
             description: "The best that can be achieved. Your highest potential or goal in this situation.",
-            index: 4,
         },
         SpreadPosition {
             name: "Near Future",
             description: "What's coming soon. Events and energies approaching in the short term.",
-            index: 5,
         },
         SpreadPosition {
             name: "Self",
             description: "Your attitude and approach. How you see yourself and your role in this situation.",
-            index: 6,
         },
         SpreadPosition {
             name: "Environment",
             description: "External influences. How others see you and the energies of people around you.",
-            index: 7,
         },
         SpreadPosition {
             name: "Hopes & Fears",
             description: "What you hope for or fear. Your expectations, anxieties, and desires regarding the outcome.",
-            index: 8,
         },
         SpreadPosition {
             name: "Outcome",
             description: "The likely result. Where the current path leads if energies continue unchanged.",
-            index: 9,
         },
     ],
     layout: SpreadLayout::CelticCross,
@@ -245,7 +220,6 @@ pub struct Reading {
     pub spread: &'static Spread,
     pub drawn: Vec<DrawnCard>,
     pub timestamp: chrono::DateTime<chrono::Local>,
-    #[allow(dead_code)]
     pub notes: Option<String>,
 }
 
@@ -285,6 +259,12 @@ impl Reading {
         writeln!(&mut output).unwrap();
         writeln!(&mut output, "## Spread: {}", self.spread.name).unwrap();
         writeln!(&mut output).unwrap();
+        
+        if let Some(notes) = &self.notes {
+            writeln!(&mut output, "## Notes").unwrap();
+            writeln!(&mut output, "{}", notes).unwrap();
+            writeln!(&mut output).unwrap();
+        }
         
         for (i, (card, position)) in self
             .drawn

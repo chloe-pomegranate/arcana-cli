@@ -1,7 +1,7 @@
-//! Card detail screen - full card information
+//! Daily Card screen - shows the card of the day
 
 use ratatui::{
-    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    layout::{Alignment, Constraint, Direction, Layout},
     style::{Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
@@ -12,26 +12,47 @@ use crate::tui::app::App;
 use crate::tui::screens::{card_color, suit_symbol, arcana_symbol};
 
 pub fn draw(f: &mut Frame, app: &mut App) {
-    if let Some(card) = app.selected_card {
+    if let Some(card) = app.daily_card {
         let area = f.area();
 
         // Clear background
         f.render_widget(Clear, area);
 
-        // Two-column layout
         let main_chunks = Layout::default()
             .direction(Direction::Vertical)
             .margin(2)
             .constraints([
-                Constraint::Length(10),
-                Constraint::Min(8),
+                Constraint::Length(6),
+                Constraint::Min(10),
                 Constraint::Length(3),
             ])
             .split(area);
 
-        draw_card_info(f, card, &app.theme, main_chunks[0]);
+        // Header with date
+        let today = chrono::Local::now().date_naive();
+        let header = Paragraph::new(
+            Text::from(vec![
+                Line::from(vec![
+                    Span::styled("🌅 ", Style::default().fg(app.theme.yellow)),
+                    Span::styled(
+                        "Card of the Day",
+                        Style::default().fg(app.theme.mauve).add_modifier(Modifier::BOLD),
+                    ),
+                ]),
+                Line::from(
+                    Span::styled(
+                        today.format("%A, %B %d, %Y").to_string(),
+                        Style::default().fg(app.theme.lavender),
+                    )
+                ),
+            ])
+        )
+        .alignment(Alignment::Center);
 
-        let lower_chunks = Layout::default()
+        f.render_widget(header, main_chunks[0]);
+
+        // Card info + meanings
+        let content_chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Percentage(35),
@@ -39,7 +60,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             ])
             .split(main_chunks[1]);
 
-        draw_description_box(f, card, &app.theme, lower_chunks[0]);
+        draw_card_info(f, card, &app.theme, content_chunks[0]);
 
         let meanings_chunks = Layout::default()
             .direction(Direction::Horizontal)
@@ -47,7 +68,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
                 Constraint::Percentage(50),
                 Constraint::Percentage(50),
             ])
-            .split(lower_chunks[1]);
+            .split(content_chunks[1]);
 
         draw_meaning_box(f, card, false, &app.theme, meanings_chunks[0]);
         draw_meaning_box(f, card, true, &app.theme, meanings_chunks[1]);
@@ -64,7 +85,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     }
 }
 
-fn draw_card_info(f: &mut Frame, card: &crate::cards::Card, theme: &crate::tui::app::AppTheme, area: Rect) {
+fn draw_card_info(f: &mut Frame, card: &crate::cards::Card, theme: &crate::tui::app::AppTheme, area: ratatui::layout::Rect) {
     let color = card_color(card, theme);
     let symbol = match card.arcana {
         crate::cards::ArcanaType::Major => arcana_symbol(crate::cards::ArcanaType::Major),
@@ -137,48 +158,8 @@ fn draw_card_info(f: &mut Frame, card: &crate::cards::Card, theme: &crate::tui::
         )
     ));
 
-    // Related cards
-    let related = crate::deck::Deck::related_cards(card);
-    if !related.same_number.is_empty() {
-        let names: Vec<String> = related.same_number.iter().map(|c| c.display_name()).collect();
-        let text = if names.len() <= 3 {
-            names.join(", ")
-        } else {
-            format!("{}, +{} more", names[..3].join(", "), names.len() - 3)
-        };
-        lines.push(Line::from(
-            Span::styled(format!("Same number: {}", text), Style::default().fg(theme.subtext0))
-        ));
-    }
-    if let Some(opposing) = related.opposing {
-        lines.push(Line::from(
-            Span::styled(format!("Opposing: {}", opposing.display_name()), Style::default().fg(theme.subtext0))
-        ));
-    }
-
     let para = Paragraph::new(Text::from(lines)).alignment(Alignment::Center).wrap(Wrap { trim: true });
     f.render_widget(para, inner);
-}
-
-fn draw_description_box(
-    f: &mut Frame,
-    card: &crate::cards::Card,
-    theme: &crate::tui::app::AppTheme,
-    area: Rect,
-) {
-    let block = Block::default()
-        .title(" Description ")
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme.mauve))
-        .title_style(Style::default().fg(theme.mauve).add_modifier(Modifier::BOLD));
-
-    let para = Paragraph::new(Text::from(vec![Line::from(
-        Span::styled(card.description, Style::default().fg(theme.text))
-    )]))
-    .wrap(Wrap { trim: true })
-    .block(block);
-
-    f.render_widget(para, area);
 }
 
 fn draw_meaning_box(
@@ -186,7 +167,7 @@ fn draw_meaning_box(
     card: &crate::cards::Card,
     reversed: bool,
     theme: &crate::tui::app::AppTheme,
-    area: Rect,
+    area: ratatui::layout::Rect,
 ) {
     let (title, meaning, color) = if reversed {
         (" Reversed ", card.reversed, theme.yellow)

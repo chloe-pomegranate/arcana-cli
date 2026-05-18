@@ -73,8 +73,10 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         // Help
         let help = Paragraph::new(
             Text::from(vec![Line::from(vec![
-                Span::styled("Enter/Space/→", Style::default().fg(app.theme.yellow)),
-                Span::styled(" reveal next  ", Style::default().fg(app.theme.subtext0)),
+                Span::styled("Space/→", Style::default().fg(app.theme.yellow)),
+                Span::styled(" next  ", Style::default().fg(app.theme.subtext0)),
+                Span::styled("←/h", Style::default().fg(app.theme.yellow)),
+                Span::styled(" prev  ", Style::default().fg(app.theme.subtext0)),
                 Span::styled("Esc/q", Style::default().fg(app.theme.yellow)),
                 Span::styled(" quit", Style::default().fg(app.theme.subtext0)),
             ])])

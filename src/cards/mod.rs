@@ -99,7 +99,6 @@ pub struct Card {
     pub keywords: &'static [&'static str],
     pub upright: &'static str,
     pub reversed: &'static str,
-    #[allow(dead_code)]
     pub description: &'static str,
     pub element: Option<Element>,
     pub astrology: Option<&'static str>,
@@ -167,8 +166,6 @@ impl fmt::Display for Card {
 pub struct DrawnCard {
     pub card: &'static Card,
     pub reversed: bool,
-    #[allow(dead_code)]
-    pub position: Option<SpreadPosition>,
 }
 
 impl DrawnCard {
@@ -177,7 +174,6 @@ impl DrawnCard {
         Self {
             card,
             reversed,
-            position: None,
         }
     }
 
@@ -201,20 +197,6 @@ impl DrawnCard {
 pub struct SpreadPosition {
     pub name: &'static str,
     pub description: &'static str,
-    #[allow(dead_code)]
-    pub index: usize,
-}
-
-impl SpreadPosition {
-    /// Create a new spread position
-    #[allow(dead_code)]
-    pub const fn new(name: &'static str, description: &'static str, index: usize) -> Self {
-        Self {
-            name,
-            description,
-            index,
-        }
-    }
 }
 
 #[cfg(test)]

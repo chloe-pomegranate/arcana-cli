@@ -313,13 +313,13 @@ pub const MAJOR_ARCANA: &[Card] = &[
 ];
 
 /// Get a Major Arcana card by number (0-21)
-#[allow(dead_code)]
+#[cfg(test)]
 pub fn get_by_number(number: u8) -> Option<&'static Card> {
     MAJOR_ARCANA.iter().find(|c| c.number == number)
 }
 
 /// Get a Major Arcana card by name (case-insensitive)
-#[allow(dead_code)]
+#[cfg(test)]
 pub fn get_by_name(name: &str) -> Option<&'static Card> {
     let name_lower = name.to_lowercase();
     MAJOR_ARCANA

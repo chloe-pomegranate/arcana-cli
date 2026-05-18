@@ -96,7 +96,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
                 Span::styled("Enter/Esc/q", Style::default().fg(app.theme.yellow)),
                 Span::styled(" return to menu  ", Style::default().fg(app.theme.subtext0)),
                 Span::styled("s", Style::default().fg(app.theme.yellow)),
-                Span::styled(" save to journal", Style::default().fg(app.theme.subtext0)),
+                Span::styled(" add notes & save", Style::default().fg(app.theme.subtext0)),
             ])])
         )
         .alignment(Alignment::Center);
@@ -111,35 +111,63 @@ fn draw_cards_list(
     app: &App,
     area: Rect,
 ) {
-    // Split area horizontally for cards
     let num_cards = reading.card_count();
-    let constraints: Vec<Constraint> = if num_cards <= 3 {
+
+    if num_cards <= 3 {
         // Horizontal layout for few cards
-        (0..num_cards)
+        let constraints: Vec<Constraint> = (0..num_cards)
             .map(|_| Constraint::Percentage((100 / num_cards) as u16))
-            .collect()
+            .collect();
+
+        let chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(constraints)
+            .split(area);
+
+        for (i, ((card, position), chunk)) in reading
+            .drawn
+            .iter()
+            .zip(reading.spread.positions.iter())
+            .zip(chunks.iter())
+            .enumerate()
+        {
+            draw_mini_card(f, card, position.name, i + 1, app, *chunk);
+        }
     } else {
         // Grid layout for many cards
-        let cols = 3;
-        let _rows = (num_cards + cols - 1) / cols;
-        (0..num_cards)
-            .map(|_| Constraint::Percentage((100 / cols) as u16))
-            .collect()
-    };
+        let cols: usize = 3;
+        let rows: usize = num_cards.div_ceil(cols);
 
-    let chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints(constraints)
-        .split(area);
+        let row_constraints: Vec<Constraint> = (0..rows)
+            .map(|_| Constraint::Percentage((100 / rows) as u16))
+            .collect();
 
-    for (i, ((card, position), chunk)) in reading
-        .drawn
-        .iter()
-        .zip(reading.spread.positions.iter())
-        .zip(chunks.iter())
-        .enumerate()
-    {
-        draw_mini_card(f, card, position.name, i + 1, app, *chunk);
+        let row_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(row_constraints)
+            .split(area);
+
+        let mut card_idx = 0;
+        for row in 0..rows {
+            let cards_in_row = (cols).min(num_cards - card_idx);
+            let col_constraints: Vec<Constraint> = (0..cards_in_row)
+                .map(|_| Constraint::Percentage((100 / cols) as u16))
+                .collect();
+
+            let col_chunks = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints(col_constraints)
+                .split(row_chunks[row]);
+
+            for col in 0..cards_in_row {
+                let (card, position) = (
+                    &reading.drawn[card_idx],
+                    &reading.spread.positions[card_idx],
+                );
+                draw_mini_card(f, card, position.name, card_idx + 1, app, col_chunks[col]);
+                card_idx += 1;
+            }
+        }
     }
 }
 

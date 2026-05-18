@@ -32,19 +32,8 @@ impl Deck {
         deck
     }
 
-    /// Create a new deck without shuffling (for testing)
-    #[allow(dead_code)]
-    pub fn new_ordered() -> Self {
-        Self {
-            cards: (0..78).collect(),
-            position: 0,
-            allow_reversals: true,
-            reversal_probability: Self::DEFAULT_REVERSAL_PROBABILITY,
-        }
-    }
-
     /// Create a Major Arcana only deck (22 cards)
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn new_major_arcana_only() -> Self {
         let mut deck = Self {
             cards: (0..22).collect(),
@@ -54,6 +43,17 @@ impl Deck {
         };
         deck.shuffle();
         deck
+    }
+
+    /// Create a new deck without shuffling (for testing)
+    #[cfg(test)]
+    pub fn new_ordered() -> Self {
+        Self {
+            cards: (0..78).collect(),
+            position: 0,
+            allow_reversals: true,
+            reversal_probability: Self::DEFAULT_REVERSAL_PROBABILITY,
+        }
     }
 
     /// Get a card by its index in the combined deck
@@ -67,15 +67,13 @@ impl Deck {
         }
     }
 
-
-
     /// Iterate over all cards
     pub fn iter_all_cards() -> impl Iterator<Item = &'static Card> {
         MAJOR_ARCANA.iter().chain(MINOR_ARCANA.iter())
     }
 
     /// Get the total number of cards
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn total_cards(&self) -> usize {
         self.cards.len()
     }
@@ -86,7 +84,7 @@ impl Deck {
     }
 
     /// Get the number of cards already drawn
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn drawn(&self) -> usize {
         self.position
     }
@@ -102,7 +100,7 @@ impl Deck {
     }
 
     /// Set the reversal probability (0.0 to 1.0)
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn set_reversal_probability(&mut self, probability: f64) {
         self.reversal_probability = probability.clamp(0.0, 1.0);
     }
@@ -112,23 +110,6 @@ impl Deck {
         let mut rng = thread_rng();
         self.cards.shuffle(&mut rng);
         self.position = 0;
-    }
-
-    /// Perform a ritual shuffle (3 shuffles with cuts)
-    #[allow(dead_code)]
-    pub fn ritual_shuffle(&mut self) {
-        for _ in 0..3 {
-            self.shuffle();
-            self.cut();
-        }
-    }
-
-    /// Cut the deck at a random position
-    #[allow(dead_code)]
-    pub fn cut(&mut self) {
-        let mut rng = thread_rng();
-        let cut_point = rng.gen_range(0..self.cards.len());
-        self.cards.rotate_left(cut_point);
     }
 
     /// Determine if a card should be reversed
@@ -168,15 +149,6 @@ impl Deck {
         drawn
     }
 
-    /// Peek at the next card without drawing it
-    #[allow(dead_code)]
-    pub fn peek(&self) -> Option<&'static Card> {
-        if self.is_empty() {
-            return None;
-        }
-        Self::get_card(self.cards[self.position])
-    }
-
     /// Reset the deck position without reshuffling
     pub fn reset(&mut self) {
         self.position = 0;
@@ -186,6 +158,23 @@ impl Deck {
     pub fn reset_and_shuffle(&mut self) {
         self.reset();
         self.shuffle();
+    }
+
+    /// Get the deterministic card of the day for a given date
+    pub fn daily_card(date: chrono::NaiveDate) -> crate::cards::DrawnCard {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        let date_str = date.format("%Y-%m-%d").to_string();
+        let mut hasher = DefaultHasher::new();
+        date_str.hash(&mut hasher);
+        let hash = hasher.finish();
+
+        let card_index = (hash % 78) as usize;
+        let reversed = ((hash >> 32) % 100) < 15;
+
+        let card = Self::get_card(card_index).expect("Daily card index should always be valid");
+        crate::cards::DrawnCard::new(card, reversed)
     }
 
     /// Search for cards by name (case-insensitive partial match)
@@ -201,6 +190,40 @@ impl Deck {
         let name_lower = name.to_lowercase();
         Self::iter_all_cards().find(|c| c.name.to_lowercase() == name_lower)
     }
+
+    /// Find cards related to the given card (same number, same suit, opposing)
+    pub fn related_cards(card: &Card) -> RelatedCards {
+        let same_number: Vec<&'static Card> = Self::iter_all_cards()
+            .filter(|c| c.number == card.number && c.name != card.name)
+            .collect();
+
+        let opposing = if card.arcana == crate::cards::ArcanaType::Major {
+            Self::get_card((21 - card.number) as usize)
+        } else if let Some(suit) = card.suit {
+            let opposite_suit = match suit {
+                crate::cards::Suit::Wands => crate::cards::Suit::Cups,
+                crate::cards::Suit::Cups => crate::cards::Suit::Wands,
+                crate::cards::Suit::Swords => crate::cards::Suit::Pentacles,
+                crate::cards::Suit::Pentacles => crate::cards::Suit::Swords,
+            };
+            MINOR_ARCANA
+                .iter()
+                .find(|c| c.suit == Some(opposite_suit) && c.number == card.number)
+        } else {
+            None
+        };
+
+        RelatedCards {
+            same_number,
+            opposing,
+        }
+    }
+}
+
+/// Related cards for a given card
+pub struct RelatedCards {
+    pub same_number: Vec<&'static Card>,
+    pub opposing: Option<&'static Card>,
 }
 
 impl Default for Deck {
@@ -212,7 +235,7 @@ impl Default for Deck {
 /// Utility functions for working with cards
 pub mod utils {
     use super::*;
-    use crate::cards::{ArcanaType, Suit};
+    use crate::cards::Suit;
 
     /// Get all Major Arcana cards
     pub fn major_arcana() -> &'static [Card] {
@@ -220,33 +243,20 @@ pub mod utils {
     }
 
     /// Get all Minor Arcana cards
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn minor_arcana() -> &'static [Card] {
         MINOR_ARCANA
     }
 
     /// Get cards by arcana type
-    #[allow(dead_code)]
-    pub fn by_arcana_type(arcana: ArcanaType) -> impl Iterator<Item = &'static Card> {
+    #[cfg(test)]
+    pub fn by_arcana_type(arcana: crate::cards::ArcanaType) -> impl Iterator<Item = &'static Card> {
         Deck::iter_all_cards().filter(move |c| c.arcana == arcana)
     }
 
     /// Get cards by suit
     pub fn by_suit(suit: Suit) -> impl Iterator<Item = &'static Card> {
         Deck::iter_all_cards().filter(move |c| c.suit == Some(suit))
-    }
-
-    /// Format a card for display in CLI
-    #[allow(dead_code)]
-    pub fn format_card(card: &Card, reversed: bool) -> String {
-        let orientation = if reversed { " (Reversed)" } else { "" };
-        format!("{}{}", card.display_name(), orientation)
-    }
-
-    /// Format a drawn card for display
-    #[allow(dead_code)]
-    pub fn format_drawn_card(drawn: &DrawnCard) -> String {
-        format_card(drawn.card, drawn.reversed)
     }
 }
 
@@ -364,6 +374,30 @@ mod tests {
         // Draw many cards, none should be reversed
         let drawn = deck.draw_many(10);
         assert!(drawn.iter().all(|c| !c.reversed));
+    }
+
+    #[test]
+    fn test_related_cards() {
+        // Major Arcana: The Magician (1) opposes Judgement (20)
+        let magician = Deck::find_by_name("The Magician").unwrap();
+        let related = Deck::related_cards(magician);
+        // Same number includes all Aces
+        assert!(!related.same_number.is_empty());
+        assert!(related.same_number.iter().any(|c| c.name == "Ace of Wands"));
+        assert_eq!(related.opposing.unwrap().name, "Judgement");
+
+        // Minor Arcana: Six of Wands opposes Six of Cups
+        let six_wands = Deck::find_by_name("Six of Wands").unwrap();
+        let related2 = Deck::related_cards(six_wands);
+        assert_eq!(related2.opposing.unwrap().name, "Six of Cups");
+        assert!(related2.same_number.iter().any(|c| c.name == "Six of Cups"));
+        assert!(related2.same_number.iter().any(|c| c.name == "The Lovers"));
+
+        // The Fool (0) has no same-number cards, opposes The World (21)
+        let fool = Deck::find_by_name("The Fool").unwrap();
+        let related3 = Deck::related_cards(fool);
+        assert!(related3.same_number.is_empty());
+        assert_eq!(related3.opposing.unwrap().name, "The World");
     }
 
     #[test]

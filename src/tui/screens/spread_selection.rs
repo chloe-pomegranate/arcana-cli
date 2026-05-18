@@ -17,7 +17,8 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         .constraints([
             Constraint::Length(3),
             Constraint::Min(10),
-            Constraint::Length(8),
+            Constraint::Length(6),
+            Constraint::Length(3),
         ])
         .split(f.area());
 
@@ -133,5 +134,5 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     )
     .alignment(Alignment::Center);
 
-    f.render_widget(help, chunks[2]);
+    f.render_widget(help, chunks[3]);
 }

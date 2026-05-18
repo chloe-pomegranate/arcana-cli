@@ -97,7 +97,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         ]),
         Line::from(vec![
             Span::styled("  Journal", Style::default().fg(app.theme.lavender)),
-            Span::styled("        View past readings (coming soon)", Style::default().fg(app.theme.text)),
+            Span::styled("        View past readings", Style::default().fg(app.theme.text)),
         ]),
         Line::from(""),
         Line::from(vec![
